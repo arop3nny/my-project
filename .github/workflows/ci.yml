@@ -98,7 +98,7 @@ jobs:
           PGDATABASE: platform
           PGUSER: platform
           PGPASSWORD: ci-ephemeral-password
-      - uses: azure/setup-helm@v4.3.1
+      - uses: azure/setup-helm@v5.0.1
         with:
           version: v3.19.0
       - run: pnpm helm:check
@@ -186,7 +186,7 @@ jobs:
           merge-multiple: true
           path: .release/digests
       - run: node tools/ci/release.mjs bundle
-      - uses: azure/setup-helm@v4.3.1
+      - uses: azure/setup-helm@v5.0.1
         with:
           version: v3.19.0
       - name: Package the chart and environment configuration with the images
@@ -217,7 +217,7 @@ jobs:
         with:
           name: release-bundle
           path: .release/bundle
-      - uses: azure/setup-helm@v4.3.1
+      - uses: azure/setup-helm@v5.0.1
         with:
           version: v3.19.0
       - name: Deploy staging atomically
