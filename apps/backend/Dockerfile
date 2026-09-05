@@ -1,5 +1,5 @@
 # syntax=docker/dockerfile:1
-FROM node:22-alpine AS build
+FROM node:26-alpine AS build
 WORKDIR /workspace
 ENV NX_DAEMON=false NX_ISOLATE_PLUGINS=false
 COPY package.json pnpm-lock.yaml pnpm-workspace.yaml .npmrc ./
@@ -14,7 +14,7 @@ COPY apps/backend apps/backend
 RUN pnpm exec nx build backend
 RUN pnpm --filter @acme/backend deploy --prod /prod/backend
 
-FROM node:22-alpine AS runtime
+FROM node:26-alpine AS runtime
 ENV NODE_ENV=production PORT=3000
 WORKDIR /app
 COPY --from=build --chown=node:node /workspace/dist/apps/backend/ ./
