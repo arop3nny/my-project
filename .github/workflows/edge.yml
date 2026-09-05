@@ -22,7 +22,7 @@ jobs:
     runs-on: ubuntu-latest
     environment: edge-${{ inputs.environment }}
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
         with:
           persist-credentials: false
       - uses: azure/setup-helm@v4.3.1
