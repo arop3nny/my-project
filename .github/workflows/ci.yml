@@ -1,0 +1,229 @@
+name: CI and staging
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+  actions: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  # Never interrupt a Helm operation on main. Superseded PRs can be canceled.
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+env:
+  NX_DAEMON: 'false'
+  NX_ISOLATE_PLUGINS: 'false'
+  NX_NO_CLOUD: 'true'
+
+jobs:
+  plan:
+    runs-on: ubuntu-latest
+    outputs:
+      projects: ${{ steps.plan.outputs.projects }}
+      has-images: ${{ steps.plan.outputs.hasImages }}
+      all: ${{ steps.plan.outputs.all }}
+      base: ${{ steps.plan.outputs.base }}
+      head: ${{ steps.plan.outputs.head }}
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v6
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - uses: nrwl/nx-set-shas@v5
+        if: github.event_name == 'pull_request'
+        with:
+          main-branch-name: main
+      - id: plan
+        run: node tools/ci/release.mjs prepare
+        env:
+          GH_TOKEN: ${{ github.token }}
+      - uses: actions/upload-artifact@v4
+        with:
+          name: release-plan
+          path: .release/plan.json
+          include-hidden-files: true
+          retention-days: 7
+
+  validate:
+    needs: plan
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:17.11-alpine
+        env:
+          POSTGRES_USER: platform
+          POSTGRES_DB: platform
+          POSTGRES_PASSWORD: ci-ephemeral-password
+        ports: [5432:5432]
+        options: --health-cmd "pg_isready -U platform -d platform" --health-interval 5s --health-timeout 3s --health-retries 10
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v6
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - name: Check affected projects
+        env:
+          CHECK_ALL: ${{ needs.plan.outputs.all }}
+          NX_BASE: ${{ needs.plan.outputs.base }}
+          NX_HEAD: ${{ needs.plan.outputs.head }}
+        run: |
+          if [[ "$CHECK_ALL" == true ]]; then
+            pnpm check
+          else
+            pnpm exec nx affected -t lint typecheck test build --parallel=3
+          fi
+      - name: Test release invariants
+        run: pnpm test:release
+      - name: Verify migrations and authenticated database access
+        run: pnpm exec nx run backend:test-integration
+        env:
+          PGHOST: localhost
+          PGPORT: '5432'
+          PGDATABASE: platform
+          PGUSER: platform
+          PGPASSWORD: ci-ephemeral-password
+      - uses: azure/setup-helm@v4.3.1
+        with:
+          version: v3.19.0
+      - run: pnpm helm:check
+
+  images:
+    needs: [plan, validate]
+    if: needs.plan.outputs.has-images == 'true'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    strategy:
+      fail-fast: false
+      matrix:
+        app: ${{ fromJSON(needs.plan.outputs.projects) }}
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+      - uses: docker/setup-buildx-action@v3
+      - uses: docker/login-action@v3
+        if: github.event_name == 'push'
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - id: image
+        env:
+          APP: ${{ matrix.app }}
+        run: echo "repository=ghcr.io/${GITHUB_REPOSITORY,,}/$APP" >> "$GITHUB_OUTPUT"
+      - uses: docker/build-push-action@v6
+        id: build
+        with:
+          context: .
+          file: apps/${{ matrix.app }}/Dockerfile
+          platforms: linux/amd64
+          push: ${{ github.event_name == 'push' }}
+          tags: ${{ steps.image.outputs.repository }}:sha-${{ github.sha }}
+          labels: |
+            org.opencontainers.image.source=https://github.com/${{ github.repository }}
+            org.opencontainers.image.revision=${{ github.sha }}
+          cache-from: type=gha,scope=${{ matrix.app }}
+          cache-to: type=gha,mode=max,scope=${{ matrix.app }}
+          provenance: mode=max
+          sbom: true
+      - name: Save immutable image digest
+        if: github.event_name == 'push'
+        env:
+          APP: ${{ matrix.app }}
+          DIGEST: ${{ steps.build.outputs.digest }}
+        run: |
+          mkdir -p .release/digests
+          printf '%s\n' "$DIGEST" > ".release/digests/$APP.txt"
+      - uses: actions/upload-artifact@v4
+        if: github.event_name == 'push'
+        with:
+          name: digest-${{ matrix.app }}
+          path: .release/digests/*.txt
+          include-hidden-files: true
+          if-no-files-found: error
+
+  bundle:
+    needs: [plan, validate, images]
+    if: >-
+      always() && github.event_name == 'push' &&
+      needs.plan.result == 'success' && needs.validate.result == 'success' &&
+      (needs.images.result == 'success' || needs.images.result == 'skipped')
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v6
+        with:
+          node-version-file: .nvmrc
+      - uses: actions/download-artifact@v4
+        with:
+          name: release-plan
+          path: .release
+      - uses: actions/download-artifact@v4
+        if: needs.plan.outputs.has-images == 'true'
+        with:
+          pattern: digest-*
+          merge-multiple: true
+          path: .release/digests
+      - run: node tools/ci/release.mjs bundle
+      - uses: azure/setup-helm@v4.3.1
+        with:
+          version: v3.19.0
+      - name: Package the chart and environment configuration with the images
+        run: |
+          helm package deploy/helm/platform --destination .release/bundle
+          cp deploy/environments/*.yaml .release/bundle/
+      - uses: actions/upload-artifact@v4
+        with:
+          name: release-bundle
+          path: .release/bundle/
+          include-hidden-files: true
+          if-no-files-found: error
+          retention-days: 90
+
+  staging:
+    needs: bundle
+    if: always() && needs.bundle.result == 'success'
+    runs-on: ubuntu-latest
+    environment: staging
+    concurrency:
+      group: deploy-staging
+      cancel-in-progress: false
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+      - uses: actions/download-artifact@v4
+        with:
+          name: release-bundle
+          path: .release/bundle
+      - uses: azure/setup-helm@v4.3.1
+        with:
+          version: v3.19.0
+      - name: Deploy staging atomically
+        env:
+          KUBE_CONFIG_B64: ${{ secrets.KUBE_CONFIG_B64 }}
+          RELEASE_NAME: ${{ vars.RELEASE_NAME || 'platform' }}
+          KUBE_NAMESPACE: ${{ vars.KUBE_NAMESPACE || 'platform-staging' }}
+          DEPLOY_ENVIRONMENT: staging
+        run: bash tools/helm/deploy.sh

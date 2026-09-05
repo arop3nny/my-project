@@ -1,0 +1,49 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: platform-staging
+  labels: { platform.acme.io/environment: staging }
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: identity-staging
+  labels: { platform.acme.io/environment: staging }
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: edge-staging
+  labels: { platform.acme.io/environment: staging }
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: platform-production
+  labels: { platform.acme.io/environment: production }
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: identity-production
+  labels: { platform.acme.io/environment: production }
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: edge-production
+  labels: { platform.acme.io/environment: production }
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: observability-staging
+  labels:
+    platform.acme.io/environment: staging
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: observability-production
+  labels:
+    platform.acme.io/environment: production

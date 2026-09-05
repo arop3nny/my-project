@@ -1,0 +1,7 @@
+environment: production
+app:
+  hostname: app.example.com
+  tlsSecret: platform-production-tls
+identity:
+  hostname: auth.example.com
+  tlsSecret: keycloak-production-tls

@@ -1,0 +1,68 @@
+name: Promote to production
+
+on:
+  workflow_dispatch:
+    inputs:
+      run_id:
+        description: Successful CI and staging workflow run ID to promote
+        required: true
+        type: string
+
+permissions:
+  contents: read
+  actions: read
+
+concurrency:
+  group: deploy-production
+  cancel-in-progress: false
+
+jobs:
+  verify:
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    outputs:
+      sha: ${{ steps.run.outputs.sha }}
+    steps:
+      - name: Verify the source is a successful main staging run
+        id: run
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RUN_ID: ${{ inputs.run_id }}
+        run: |
+          [[ "$RUN_ID" =~ ^[0-9]+$ ]] || { echo 'Invalid workflow run ID'; exit 1; }
+          gh api "repos/$GITHUB_REPOSITORY/actions/runs/$RUN_ID" > run.json
+          jq -e '.conclusion == "success" and .event == "push" and .head_branch == "main" and .path == ".github/workflows/ci.yml"' run.json
+          echo "sha=$(jq -r '.head_sha' run.json)" >> "$GITHUB_OUTPUT"
+
+  production:
+    needs: verify
+    runs-on: ubuntu-latest
+    environment: production
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: ${{ needs.verify.outputs.sha }}
+          persist-credentials: false
+      - uses: actions/setup-node@v6
+        with:
+          node-version-file: .nvmrc
+      - uses: actions/download-artifact@v4
+        with:
+          github-token: ${{ github.token }}
+          run-id: ${{ inputs.run_id }}
+          name: release-bundle
+          path: .release/bundle
+      - name: Verify release image references and commit
+        env:
+          EXPECTED_SHA: ${{ needs.verify.outputs.sha }}
+        run: node tools/ci/release.mjs verify
+      - uses: azure/setup-helm@v4.3.1
+        with:
+          version: v3.19.0
+      - name: Promote the exact staging bundle
+        env:
+          KUBE_CONFIG_B64: ${{ secrets.KUBE_CONFIG_B64 }}
+          RELEASE_NAME: ${{ vars.RELEASE_NAME || 'platform' }}
+          KUBE_NAMESPACE: ${{ vars.KUBE_NAMESPACE || 'platform-production' }}
+          DEPLOY_ENVIRONMENT: production
+        run: bash tools/helm/deploy.sh

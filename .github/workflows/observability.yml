@@ -1,0 +1,35 @@
+name: Deploy observability
+
+on:
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: Observability environment (namespaces and Grafana admin secret must exist)
+        required: true
+        type: choice
+        options: [staging, production]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: observability-${{ inputs.environment }}
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    environment: observability-${{ inputs.environment }}
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+      - uses: azure/setup-helm@v4.3.1
+        with:
+          version: v3.19.0
+      - name: Deploy telemetry storage, collector and Grafana
+        env:
+          KUBE_CONFIG_B64: ${{ secrets.KUBE_CONFIG_B64 }}
+          DEPLOY_ENVIRONMENT: ${{ inputs.environment }}
+        run: bash tools/helm/observability.sh

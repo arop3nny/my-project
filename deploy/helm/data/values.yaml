@@ -1,0 +1,13 @@
+name: platform-db
+instances: 3
+image: ghcr.io/cloudnative-pg/postgresql:17.11-standard-trixie
+storageSize: 20Gi
+storageClass: ""
+resources:
+  requests: { cpu: 250m, memory: 512Mi }
+  limits: { cpu: "1", memory: 1Gi }
+plugins: []
+backup: {}
+runtime:
+  # Supply a managed kubernetes.io/basic-auth Secret, or let Helm generate one once.
+  existingSecret: ""

@@ -1,0 +1,40 @@
+apiVersion: k8s.keycloak.org/v2beta1
+kind: Keycloak
+metadata:
+  name: {{ .Values.keycloak.name }}
+spec:
+  image: {{ .Values.keycloak.image | quote }}
+  additionalOptions:
+    - { name: log-console-output, value: json }
+  startOptimized: false
+  instances: {{ .Values.keycloak.instances }}
+  db:
+    vendor: postgres
+    host: {{ .Values.keycloak.name }}-db-rw
+    database: keycloak
+    usernameSecret: { name: {{ .Values.keycloak.name }}-db-app, key: username }
+    passwordSecret: { name: {{ .Values.keycloak.name }}-db-app, key: password }
+    poolMinSize: 5
+    poolInitialSize: 5
+    poolMaxSize: 20
+  http:
+    httpEnabled: true
+  hostname:
+    hostname: {{ .Values.keycloak.hostname | quote }}
+    strict: true
+  proxy:
+    headers: xforwarded
+  ingress:
+    enabled: false
+  networkPolicy:
+    enabled: true
+    http:
+      - namespaceSelector:
+          matchLabels:
+            kubernetes.io/metadata.name: envoy-gateway-system
+        podSelector:
+          matchLabels:
+            gateway.envoyproxy.io/owning-gateway-namespace: {{ .Values.gateway.namespace }}
+            gateway.envoyproxy.io/owning-gateway-name: {{ .Values.gateway.name }}
+  resources:
+    {{- toYaml .Values.keycloak.resources | nindent 4 }}

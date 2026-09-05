@@ -1,0 +1,7 @@
+apiVersion: v2
+name: identity
+description: Self-hosted Keycloak and PostgreSQL managed by their Kubernetes operators
+type: application
+version: 0.1.0
+appVersion: "26.7.3"
+kubeVersion: ">=1.32.0-0"

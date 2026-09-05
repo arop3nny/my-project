@@ -1,0 +1,16 @@
+auth:
+  url: https://auth-staging.example.com
+frontend:
+  replicaCount: 1
+backend:
+  replicaCount: 1
+gateway:
+  name: platform-edge
+  namespace: edge-staging
+  hostname: staging.example.com
+# imagePullSecrets:
+#   - name: ghcr-pull
+
+telemetry:
+  environment: staging
+  endpoint: http://otel-collector.observability-staging.svc.cluster.local:4318

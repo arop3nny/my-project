@@ -1,0 +1,2 @@
+environment: staging
+grafanaAdminSecret: grafana-admin

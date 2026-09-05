@@ -1,0 +1,28 @@
+keycloak:
+  name: keycloak
+  image: quay.io/keycloak/keycloak:26.7.3
+  instances: 2
+  hostname: https://auth.example.com
+  resources:
+    requests: { cpu: 500m, memory: 1Gi }
+    limits: { cpu: "2", memory: 2Gi }
+
+database:
+  instances: 3
+  image: ghcr.io/cloudnative-pg/postgresql:17.11-standard-trixie
+  storageSize: 20Gi
+  storageClass: ""
+  resources:
+    requests: { cpu: 250m, memory: 512Mi }
+    limits: { cpu: "1", memory: 1Gi }
+  # Production should configure WAL archiving and tested backups (see README).
+  plugins: []
+  backup: {}
+
+realm:
+  import: false
+  appOrigin: https://app.example.com
+
+gateway:
+  name: platform-edge
+  namespace: edge-staging

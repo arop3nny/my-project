@@ -1,0 +1,51 @@
+environment: staging
+storageClass: ""
+grafanaAdminSecret: grafana-admin
+collector:
+  image: otel/opentelemetry-collector-contrib:0.160.0
+  resources:
+    requests: { cpu: 100m, memory: 128Mi }
+    limits: { cpu: "1", memory: 512Mi }
+logAgent:
+  enabled: true
+components:
+  loki:
+    image: grafana/loki:3.7.7
+    port: 3100
+    probe: /ready
+    uid: 10001
+    storage: 20Gi
+    args: [-config.file=/etc/platform/loki.yaml]
+    resources:
+      requests: { cpu: 100m, memory: 256Mi }
+      limits: { cpu: "1", memory: 1Gi }
+  tempo:
+    image: grafana/tempo:3.0.3
+    port: 3200
+    probe: /ready
+    uid: 10001
+    storage: 20Gi
+    args: [-config.file=/etc/platform/tempo.yaml, -target=all]
+    resources:
+      requests: { cpu: 100m, memory: 256Mi }
+      limits: { cpu: "2", memory: 2Gi }
+  prometheus:
+    image: prom/prometheus:v3.14.0
+    port: 9090
+    probe: /-/ready
+    uid: 65534
+    storage: 20Gi
+    args: [--config.file=/etc/platform/prometheus.yaml, --storage.tsdb.path=/data/prometheus, --storage.tsdb.retention.time=15d, --storage.tsdb.retention.size=16GB, --web.enable-otlp-receiver]
+    resources:
+      requests: { cpu: 100m, memory: 256Mi }
+      limits: { cpu: "1", memory: 1Gi }
+  grafana:
+    image: grafana/grafana:13.2.1
+    port: 3000
+    probe: /api/health
+    uid: 472
+    storage: 1Gi
+    args: []
+    resources:
+      requests: { cpu: 100m, memory: 128Mi }
+      limits: { cpu: "1", memory: 512Mi }

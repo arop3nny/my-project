@@ -1,0 +1,67 @@
+name: Verify telemetry pipeline
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - 'apps/backend/**'
+      - 'libs/contracts/**'
+      - 'deploy/helm/observability/**'
+      - 'tools/observability/**'
+      - 'tools/database/**'
+      - 'compose.observability.yaml'
+      - 'package.json'
+      - 'pnpm-lock.yaml'
+      - 'pnpm-workspace.yaml'
+      - '.github/workflows/observability-check.yml'
+permissions:
+  contents: read
+concurrency:
+  group: telemetry-check-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      NX_DAEMON: 'false'
+      NX_ISOLATE_PLUGINS: 'false'
+      SMOKE_TEST_DISPOSABLE: 'true'
+      PGHOST: localhost
+      PGPORT: '5432'
+      PGUSER: platform
+      PGDATABASE: platform
+      POSTGRES_PASSWORD: ephemeral-ci-owner
+      POSTGRES_RUNTIME_PASSWORD: ephemeral-ci-runtime
+      GRAFANA_ADMIN_PASSWORD: ephemeral-ci-grafana
+    services:
+      postgres:
+        image: postgres:17.11-alpine
+        env:
+          POSTGRES_USER: platform
+          POSTGRES_DB: platform
+          POSTGRES_PASSWORD: ephemeral-ci-owner
+        ports: [5432:5432]
+        options: --health-cmd "pg_isready -U platform -d platform" --health-interval 5s --health-timeout 3s --health-retries 10
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v6
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm exec nx build backend
+      - run: node tools/database/setup-local.mjs
+      - run: pnpm exec nx run backend:migrate
+      - name: Start disposable telemetry stack
+        run: docker compose -f compose.observability.yaml -p platform-otel-verification up -d --quiet-pull
+      - name: Verify all three signals through Grafana
+        run: node tools/observability/smoke.mjs
+      - name: Inspect failed telemetry services
+        if: failure()
+        run: docker compose -f compose.observability.yaml -p platform-otel-verification logs --tail=50
+      - name: Remove disposable telemetry containers and volumes
+        if: always()
+        run: docker compose -f compose.observability.yaml -p platform-otel-verification down -v

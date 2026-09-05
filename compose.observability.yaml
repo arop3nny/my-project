@@ -1,0 +1,55 @@
+# Standalone local telemetry. Bind published ports to loopback only.
+name: platform-observability
+services:
+  otel-collector:
+    image: otel/opentelemetry-collector-contrib:0.160.0
+    command: [--config=/etc/platform/collector.yaml]
+    user: '0:0'
+    environment: { DEPLOYMENT_ENVIRONMENT: development }
+    ports: ['127.0.0.1:4318:4318']
+    volumes:
+      - ./deploy/helm/observability/files:/etc/platform:ro
+      - collector-data:/data
+  loki:
+    image: grafana/loki:3.7.7
+    command: [-config.file=/etc/platform/loki.yaml]
+    user: '0:0'
+    volumes:
+      - ./deploy/helm/observability/files:/etc/platform:ro
+      - loki-data:/data
+  tempo:
+    image: grafana/tempo:3.0.3
+    command: [-config.file=/etc/platform/tempo.yaml, -target=all]
+    user: '0:0'
+    volumes:
+      - ./deploy/helm/observability/files:/etc/platform:ro
+      - tempo-data:/data
+      - tempo-runtime:/var/tempo
+  prometheus:
+    image: prom/prometheus:v3.14.0
+    command: [--config.file=/etc/platform/prometheus.yaml, --storage.tsdb.path=/prometheus, --storage.tsdb.retention.time=15d, --storage.tsdb.retention.size=2GB, --web.enable-otlp-receiver]
+    ports: ['127.0.0.1:9090:9090']
+    volumes:
+      - ./deploy/helm/observability/files:/etc/platform:ro
+      - prometheus-data:/prometheus
+  grafana:
+    image: grafana/grafana:13.2.1
+    ports: ['127.0.0.1:3001:3000']
+    environment:
+      GF_SECURITY_ADMIN_USER: admin
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD:?Set GRAFANA_ADMIN_PASSWORD in .env}
+      GF_AUTH_ANONYMOUS_ENABLED: 'false'
+      GF_USERS_ALLOW_SIGN_UP: 'false'
+      GF_ANALYTICS_REPORTING_ENABLED: 'false'
+      GF_ANALYTICS_CHECK_FOR_UPDATES: 'false'
+    volumes:
+      - ./deploy/helm/observability/files/grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./deploy/helm/observability/files/grafana/dashboards:/etc/grafana/dashboards:ro
+      - grafana-data:/var/lib/grafana
+volumes:
+  collector-data:
+  loki-data:
+  tempo-data:
+  tempo-runtime:
+  prometheus-data:
+  grafana-data:

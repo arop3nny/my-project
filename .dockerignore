@@ -1,0 +1,11 @@
+**/node_modules
+.git
+.github
+.nx
+.release
+dist
+coverage
+**/.env
+**/.env.*
+**/*.log
+tools/bin

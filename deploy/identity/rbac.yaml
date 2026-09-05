@@ -1,0 +1,36 @@
+# Namespace-level administrative access for the identity workflow, separate from app CI.
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: identity-deployer
+automountServiceAccountToken: false
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: identity-deployer
+rules:
+  - apiGroups: [gateway.networking.k8s.io]
+    resources: [httproutes]
+    verbs: [get, list, watch, create, update, patch, delete]
+  - apiGroups: [""]
+    resources: [secrets, configmaps, services, pods, events]
+    verbs: [get, list, watch, create, update, patch, delete]
+  - apiGroups: [k8s.keycloak.org]
+    resources: [keycloaks, keycloakrealmimports]
+    verbs: [get, list, watch, create, update, patch, delete]
+  - apiGroups: [postgresql.cnpg.io]
+    resources: [clusters]
+    verbs: [get, list, watch, create, update, patch]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: identity-deployer
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: identity-deployer
+subjects:
+  - kind: ServiceAccount
+    name: identity-deployer

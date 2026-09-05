@@ -1,0 +1,7 @@
+keycloak:
+  hostname: https://auth-staging.example.com
+realm:
+  appOrigin: https://staging.example.com
+gateway:
+  name: platform-edge
+  namespace: edge-staging

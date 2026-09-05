@@ -1,0 +1,17 @@
+{
+  "name": "@acme/frontend",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "dependencies": {
+    "@acme/contracts": "workspace:*",
+    "class-variance-authority": "0.7.1",
+    "clsx": "2.1.1",
+    "lucide-react": "1.41.0",
+    "radix-ui": "1.6.7",
+    "tailwind-merge": "3.6.0",
+    "react": "19.2.8",
+    "react-dom": "19.2.8",
+    "keycloak-js": "26.2.4"
+  }
+}

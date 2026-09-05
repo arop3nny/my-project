@@ -1,0 +1,58 @@
+apiVersion: postgresql.cnpg.io/v1
+kind: Cluster
+metadata:
+  name: {{ .Values.name }}
+  annotations:
+    helm.sh/resource-policy: keep
+spec:
+  instances: {{ .Values.instances }}
+  imageName: {{ .Values.image | quote }}
+  enableSuperuserAccess: false
+  bootstrap:
+    initdb:
+      database: platform
+      owner: platform
+  managed:
+    roles:
+      - name: platform_runtime
+        ensure: present
+        login: true
+        superuser: false
+        createdb: false
+        createrole: false
+        inherit: true
+        replication: false
+        bypassrls: false
+        passwordSecret:
+          name: {{ default (printf "%s-runtime" .Values.name) .Values.runtime.existingSecret }}
+      - name: platform_worker
+        ensure: present
+        login: true
+        superuser: false
+        createdb: false
+        createrole: false
+        inherit: true
+        inRoles: [platform_runtime]
+        replication: false
+        bypassrls: false
+        passwordSecret:
+          name: {{ .Values.name }}-worker
+  storage:
+    size: {{ .Values.storageSize }}
+    {{- with .Values.storageClass }}
+    storageClass: {{ . | quote }}
+    {{- end }}
+  affinity:
+    enablePodAntiAffinity: true
+    podAntiAffinityType: required
+    topologyKey: kubernetes.io/hostname
+  resources:
+    {{- toYaml .Values.resources | nindent 4 }}
+  {{- with .Values.plugins }}
+  plugins:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+  {{- with .Values.backup }}
+  backup:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}

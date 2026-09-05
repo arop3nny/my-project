@@ -1,0 +1,40 @@
+apiVersion: v1
+kind: Pod
+metadata:
+  name: {{ include "platform.fullname" . }}-smoke
+  labels:
+    {{- include "platform.labels" . | nindent 4 }}
+  annotations:
+    helm.sh/hook: test
+    helm.sh/hook-delete-policy: before-hook-creation,hook-succeeded
+spec:
+  restartPolicy: Never
+  automountServiceAccountToken: false
+  {{- with .Values.imagePullSecrets }}
+  imagePullSecrets:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+  securityContext:
+    runAsNonRoot: true
+    runAsUser: 1000
+    runAsGroup: 1000
+    seccompProfile: { type: RuntimeDefault }
+  containers:
+    - name: smoke
+      image: {{ .Values.tests.image | quote }}
+      securityContext:
+        allowPrivilegeEscalation: false
+        readOnlyRootFilesystem: true
+        capabilities: { drop: [ALL] }
+      resources:
+        requests: { cpu: 10m, memory: 16Mi }
+        limits: { cpu: 100m, memory: 32Mi }
+      command: [sh, -ec]
+      args:
+        - |
+          wget -qO- -T 10 http://{{ include "platform.fullname" . }}-frontend:{{ .Values.frontend.servicePort }}/ | grep -q '<div id="root">'
+          wget -qO- -T 10 http://{{ include "platform.fullname" . }}-backend:{{ .Values.backend.servicePort }}/health/ready
+          wget -qO- -T 10 http://{{ include "platform.fullname" . }}-frontend:{{ .Values.frontend.servicePort }}/config.json | grep -q '"keycloak"'
+          # Protected routes must reject anonymous requests. No user tokens in CI.
+          result=$(wget -S -O- -T 10 http://{{ include "platform.fullname" . }}-backend:{{ .Values.backend.servicePort }}/api/greeting 2>&1) && exit 1
+          printf '%s' "$result" | grep -q 'HTTP/1.1 401'

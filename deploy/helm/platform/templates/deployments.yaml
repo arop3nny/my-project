@@ -1,0 +1,152 @@
+{{- range $name := list "frontend" "backend" "worker" }}
+{{- $app := index $.Values $name }}
+{{- $image := ternary $.Values.backend.image (default $.Values.backend.image $app.image) (eq $name "worker") }}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "platform.fullname" $ }}-{{ $name }}
+  labels:
+    {{- include "platform.labels" $ | nindent 4 }}
+    app.kubernetes.io/component: {{ $name }}
+  annotations:
+    platform.acme.io/release-commit: {{ $.Values.releaseCommit | quote }}
+spec:
+  {{- if not $app.autoscaling.enabled }}
+  replicas: {{ $app.replicaCount }}
+  {{- end }}
+  revisionHistoryLimit: 5
+  minReadySeconds: 5
+  progressDeadlineSeconds: 240
+  strategy:
+    type: RollingUpdate
+    rollingUpdate: { maxUnavailable: 0, maxSurge: 1 }
+  selector:
+    matchLabels:
+      app.kubernetes.io/instance: {{ $.Release.Name }}
+      app.kubernetes.io/component: {{ $name }}
+  template:
+    metadata:
+      {{- if eq $name "frontend" }}
+      annotations:
+        checksum/auth-config: {{ include (print $.Template.BasePath "/frontend-config.yaml") $ | sha256sum }}
+      {{- end }}
+      labels:
+        app.kubernetes.io/name: {{ include "platform.name" $ }}
+        app.kubernetes.io/instance: {{ $.Release.Name }}
+        app.kubernetes.io/component: {{ $name }}
+    spec:
+      serviceAccountName: {{ include "platform.serviceAccountName" $ }}
+      automountServiceAccountToken: false
+      terminationGracePeriodSeconds: {{ ternary 90 30 (eq $name "worker") }}
+      {{- with $.Values.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: {{ $app.runAsUser }}
+        runAsGroup: {{ $app.runAsUser }}
+        fsGroup: {{ $app.runAsUser }}
+        seccompProfile: { type: RuntimeDefault }
+      containers:
+        - name: {{ $name }}
+          image: {{ include "platform.image" $image | quote }}
+          imagePullPolicy: {{ $image.pullPolicy }}
+          {{- if eq $name "worker" }}
+          command: [node, worker.cjs]
+          {{- end }}
+          ports:
+            - { name: http, containerPort: {{ $app.port }} }
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities: { drop: [ALL] }
+          {{- if or $app.env (ne $name "frontend") }}
+          env:
+            {{- range $key, $value := $app.env }}
+            - name: {{ $key }}
+              value: {{ $value | quote }}
+            {{- end }}
+            {{- if ne $name "frontend" }}
+            - name: RELEASE_COMMIT
+              value: {{ $.Values.releaseCommit | quote }}
+            - name: OTEL_SERVICE_NAME
+              value: platform-{{ $name }}
+            - name: DEPLOYMENT_ENVIRONMENT
+              value: {{ $.Values.telemetry.environment | quote }}
+            - name: OTEL_SDK_DISABLED
+              value: {{ not $.Values.telemetry.enabled | quote }}
+            - name: OTEL_EXPORTER_OTLP_ENDPOINT
+              value: {{ $.Values.telemetry.endpoint | quote }}
+            - name: OTEL_TRACES_SAMPLER
+              value: parentbased_traceidratio
+            - name: OTEL_TRACES_SAMPLER_ARG
+              value: {{ $.Values.telemetry.samplingRatio | quote }}
+            - name: AUTH_ISSUER
+              value: {{ printf "%s/realms/%s" (trimSuffix "/" $.Values.auth.url) $.Values.auth.realm | quote }}
+            - name: AUTH_AUDIENCE
+              value: {{ $.Values.auth.audience | quote }}
+            {{- include "platform.databaseEnv" (dict "Values" $.Values "worker" (eq $name "worker")) | nindent 12 }}
+            {{- include "platform.messagingEnv" (dict "Values" $.Values "worker" (eq $name "worker")) | nindent 12 }}
+            {{- end }}
+          {{- end }}
+          startupProbe:
+            httpGet: { path: /health/live, port: http }
+            failureThreshold: 30
+            periodSeconds: 2
+          readinessProbe:
+            httpGet: { path: /health/ready, port: http }
+            periodSeconds: 5
+            timeoutSeconds: 2
+          livenessProbe:
+            httpGet: { path: /health/live, port: http }
+            periodSeconds: 10
+            timeoutSeconds: 2
+          resources:
+            {{- toYaml $app.resources | nindent 12 }}
+          volumeMounts:
+            - { name: tmp, mountPath: /tmp }
+            {{- if ne $name "frontend" }}
+            - { name: postgres-ca, mountPath: /etc/postgres, readOnly: true }
+            {{- end }}
+            {{- if eq $name "worker" }}
+            - { name: kafka-ca, mountPath: /etc/kafka, readOnly: true }
+            {{- end }}
+            {{- if eq $name "frontend" }}
+            - { name: auth-config, mountPath: /usr/share/nginx/html/config.json, subPath: config.json, readOnly: true }
+            {{- end }}
+      volumes:
+        {{- if ne $name "frontend" }}
+        - name: postgres-ca
+          secret:
+            secretName: {{ $.Values.database.caSecret }}
+        {{- end }}
+        {{- if eq $name "worker" }}
+        - name: kafka-ca
+          secret: { secretName: {{ $.Values.messaging.kafkaCaSecret }} }
+        {{- end }}
+        - name: tmp
+          emptyDir: { sizeLimit: 64Mi }
+        {{- if eq $name "frontend" }}
+        - name: auth-config
+          configMap:
+            name: {{ include "platform.fullname" $ }}-frontend-config
+        {{- end }}
+      topologySpreadConstraints:
+        - maxSkew: 1
+          topologyKey: kubernetes.io/hostname
+          whenUnsatisfiable: ScheduleAnyway
+          labelSelector:
+            matchLabels:
+              app.kubernetes.io/instance: {{ $.Release.Name }}
+              app.kubernetes.io/component: {{ $name }}
+      {{- with $.Values.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with $.Values.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+{{- end }}

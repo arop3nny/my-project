@@ -1,0 +1,7 @@
+environment: staging
+app:
+  hostname: staging.example.com
+  tlsSecret: platform-staging-tls
+identity:
+  hostname: auth-staging.example.com
+  tlsSecret: keycloak-staging-tls

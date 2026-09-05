@@ -1,0 +1,20 @@
+{{- range $name := list "frontend" "backend" }}
+{{- $app := index $.Values $name }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "platform.fullname" $ }}-{{ $name }}
+  labels:
+    {{- include "platform.labels" $ | nindent 4 }}
+    app.kubernetes.io/component: {{ $name }}
+spec:
+  type: ClusterIP
+  selector:
+    app.kubernetes.io/instance: {{ $.Release.Name }}
+    app.kubernetes.io/component: {{ $name }}
+  ports:
+    - name: http
+      port: {{ $app.servicePort }}
+      targetPort: http
+{{- end }}

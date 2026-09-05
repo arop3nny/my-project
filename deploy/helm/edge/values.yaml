@@ -1,0 +1,14 @@
+name: platform-edge
+gatewayClassName: envoy
+environment: staging
+replicas: 2
+app:
+  hostname: staging.example.com
+  tlsSecret: platform-staging-tls
+identity:
+  hostname: auth-staging.example.com
+  tlsSecret: keycloak-staging-tls
+
+telemetry:
+  enabled: true
+  samplingRate: 10

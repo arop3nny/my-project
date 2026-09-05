@@ -1,0 +1,6 @@
+apiVersion: v2
+name: observability
+version: 0.1.0
+description: Private OpenTelemetry, Prometheus, Grafana, Loki and Tempo stack
+appVersion: "1.0.0"
+type: application

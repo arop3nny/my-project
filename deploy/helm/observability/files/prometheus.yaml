@@ -1,0 +1,16 @@
+global:
+  scrape_interval: 15s
+  evaluation_interval: 30s
+storage:
+  tsdb:
+    out_of_order_time_window: 10m
+otlp:
+  promote_resource_attributes: [service.name, service.instance.id, deployment.environment.name]
+rule_files: [/etc/platform/alerts.yaml]
+scrape_configs:
+  - job_name: prometheus
+    static_configs: [{ targets: ['prometheus:9090'] }]
+  - job_name: loki
+    static_configs: [{ targets: ['loki:3100'] }]
+  - job_name: tempo
+    static_configs: [{ targets: ['tempo:3200'] }]

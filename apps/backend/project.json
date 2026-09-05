@@ -1,0 +1,108 @@
+{
+  "name": "backend",
+  "sourceRoot": "apps/backend/src",
+  "projectType": "application",
+  "implicitDependencies": [
+    "contracts"
+  ],
+  "tags": [
+    "scope:backend",
+    "type:app"
+  ],
+  "targets": {
+    "build": {
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "node apps/backend/build.mjs"
+      },
+      "outputs": [
+        "{workspaceRoot}/dist/apps/backend"
+      ]
+    },
+    "serve": {
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "tsx watch --env-file-if-exists=.env --tsconfig tsconfig.base.json apps/backend/src/main.ts"
+      }
+    },
+    "migrate": {
+      "executor": "nx:run-commands",
+      "cache": false,
+      "options": {
+        "command": "tsx --env-file-if-exists=.env apps/backend/src/migrate.ts",
+        "env": {
+          "MIGRATIONS_DIR": "apps/backend/migrations"
+        }
+      }
+    },
+    "typecheck": {
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "tsc -p apps/backend/tsconfig.json --noEmit"
+      }
+    },
+    "lint": {
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "eslint apps/backend"
+      }
+    },
+    "test": {
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "vitest run --config apps/backend/vitest.config.ts"
+      }
+    },
+    "test-integration": {
+      "executor": "nx:run-commands",
+      "cache": false,
+      "options": {
+        "command": "vitest run --config apps/backend/vitest.integration.config.ts"
+      }
+    },
+    "container": {
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "docker build -f apps/backend/Dockerfile -t acme-backend:local ."
+      }
+    },
+    "serve-worker": {
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "tsx watch --env-file-if-exists=.env --tsconfig tsconfig.base.json apps/backend/src/worker.ts",
+        "env": {
+          "OTEL_SERVICE_NAME": "platform-worker",
+          "PGUSER": "platform_worker",
+          "PORT": "3002"
+        }
+      }
+    },
+    "rollback": {
+      "executor": "nx:run-commands",
+      "cache": false,
+      "options": {
+        "command": "tsx --env-file-if-exists=.env apps/backend/src/migrate.ts down",
+        "env": {
+          "MIGRATIONS_DIR": "apps/backend/migrations"
+        }
+      }
+    },
+    "migration-status": {
+      "executor": "nx:run-commands",
+      "cache": false,
+      "options": {
+        "command": "tsx --env-file-if-exists=.env apps/backend/src/migrate.ts status",
+        "env": {
+          "MIGRATIONS_DIR": "apps/backend/migrations"
+        }
+      }
+    },
+    "test-async": {
+      "executor": "nx:run-commands",
+      "cache": false,
+      "options": {
+        "command": "vitest run --config apps/backend/vitest.async.config.ts"
+      }
+    }
+  }
+}

@@ -1,0 +1,44 @@
+{{- range $name := list "frontend" "backend" "worker" }}
+{{- $app := index $.Values $name }}
+{{- if $app.autoscaling.enabled }}
+---
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: {{ include "platform.fullname" $ }}-{{ $name }}
+  labels:
+    {{- include "platform.labels" $ | nindent 4 }}
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: {{ include "platform.fullname" $ }}-{{ $name }}
+  minReplicas: {{ $app.autoscaling.minReplicas }}
+  maxReplicas: {{ $app.autoscaling.maxReplicas }}
+  metrics:
+    - type: Resource
+      resource:
+        name: cpu
+        target:
+          type: Utilization
+          averageUtilization: {{ $app.autoscaling.targetCPUUtilizationPercentage }}
+  behavior:
+    scaleDown:
+      stabilizationWindowSeconds: 300
+{{- end }}
+{{- if $app.pdb.enabled }}
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: {{ include "platform.fullname" $ }}-{{ $name }}
+  labels:
+    {{- include "platform.labels" $ | nindent 4 }}
+spec:
+  minAvailable: {{ $app.pdb.minAvailable }}
+  selector:
+    matchLabels:
+      app.kubernetes.io/instance: {{ $.Release.Name }}
+      app.kubernetes.io/component: {{ $name }}
+{{- end }}
+{{- end }}

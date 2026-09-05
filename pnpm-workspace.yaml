@@ -1,0 +1,16 @@
+packages:
+  - apps/*
+  - libs/*
+allowBuilds:
+  esbuild: true
+  msgpackr-extract: false
+  nx: true
+  protobufjs: true
+injectWorkspacePackages: true
+minimumReleaseAgeExclude:
+  - eslint@10.10.0
+  - jose@6.2.11
+  - lucide-react@1.41.0
+  - shadcn@4.21.0
+saveExact: true
+engineStrict: true

@@ -1,0 +1,90 @@
+apiVersion: gateway.envoyproxy.io/v1alpha1
+kind: EnvoyProxy
+metadata:
+  name: {{ .Values.name }}-proxy
+spec:
+  {{- if .Values.telemetry.enabled }}
+  telemetry:
+    tracing:
+      samplingRate: {{ .Values.telemetry.samplingRate }}
+      provider:
+        type: OpenTelemetry
+        backendRefs:
+          - name: otel-collector
+            namespace: observability-{{ .Values.environment }}
+            port: 4317
+    accessLog:
+      settings:
+        - format:
+            type: JSON
+            json:
+              method: "%REQ(:METHOD)%"
+              route: "%ROUTE_NAME%"
+              status: "%RESPONSE_CODE%"
+              duration_ms: "%DURATION%"
+              request_id: "%REQ(X-REQUEST-ID)%"
+              trace_id: "%TRACE_ID%"
+          sinks:
+            - type: OpenTelemetry
+              openTelemetry:
+                host: otel-collector.observability-{{ .Values.environment }}.svc.cluster.local
+                port: 4317
+                resources:
+                  service.name: platform-gateway
+  {{- end }}
+  provider:
+    type: Kubernetes
+    kubernetes:
+      envoyDeployment:
+        replicas: {{ .Values.replicas }}
+---
+apiVersion: gateway.networking.k8s.io/v1
+kind: Gateway
+metadata:
+  name: {{ .Values.name }}
+spec:
+  gatewayClassName: {{ .Values.gatewayClassName }}
+  infrastructure:
+    parametersRef:
+      group: gateway.envoyproxy.io
+      kind: EnvoyProxy
+      name: {{ .Values.name }}-proxy
+  listeners:
+    - name: http
+      protocol: HTTP
+      port: 80
+      allowedRoutes:
+        namespaces: { from: Same }
+    {{- range $listener, $config := dict "app" .Values.app "identity" .Values.identity }}
+    - name: {{ $listener }}-https
+      protocol: HTTPS
+      port: 443
+      hostname: {{ $config.hostname | quote }}
+      tls:
+        mode: Terminate
+        certificateRefs:
+          - name: {{ $config.tlsSecret }}
+      allowedRoutes:
+        namespaces:
+          from: Selector
+          selector:
+            matchLabels:
+              platform.acme.io/environment: {{ $.Values.environment | quote }}
+    {{- end }}
+---
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata:
+  name: redirect-https
+spec:
+  parentRefs:
+    - name: {{ .Values.name }}
+      sectionName: http
+  hostnames: [{{ .Values.app.hostname | quote }}, {{ .Values.identity.hostname | quote }}]
+  rules:
+    - filters:
+        - type: RequestRedirect
+          requestRedirect:
+            scheme: https
+            port: 443
+            statusCode: 301

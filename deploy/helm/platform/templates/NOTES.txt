@@ -1,0 +1,10 @@
+Release {{ .Release.Name }} is installed in {{ .Release.Namespace }}.
+
+The frontend and /api routes attach to Gateway {{ .Values.gateway.namespace }}/{{ .Values.gateway.name }}.
+Application URL: https://{{ .Values.gateway.hostname }}
+
+Check the HTTPRoute Accepted and ResolvedRefs conditions:
+  kubectl get httproutes -n {{ .Release.Namespace }}
+
+The application PostgreSQL cluster must exist before installing this chart.
+Pre-upgrade migrations use the backend image and database credentials Secret.

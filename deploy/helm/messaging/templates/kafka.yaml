@@ -1,0 +1,91 @@
+apiVersion: kafka.strimzi.io/v1
+kind: KafkaNodePool
+metadata:
+  name: brokers
+  labels: { strimzi.io/cluster: platform-kafka }
+  annotations: { helm.sh/resource-policy: keep }
+spec:
+  replicas: {{ .Values.kafka.replicas }}
+  roles: [controller, broker]
+  storage:
+    type: jbod
+    volumes:
+      - id: 0
+        type: persistent-claim
+        size: {{ .Values.kafka.storageSize }}
+        kraftMetadata: shared
+        deleteClaim: false
+        {{- with .Values.storageClass }}
+        class: {{ . | quote }}
+        {{- end }}
+  resources:
+    {{- toYaml .Values.kafka.resources | nindent 4 }}
+---
+apiVersion: kafka.strimzi.io/v1
+kind: Kafka
+metadata:
+  name: platform-kafka
+  annotations: { helm.sh/resource-policy: keep }
+spec:
+  kafka:
+    version: {{ .Values.kafka.version }}
+    metadataVersion: 4.3-IV0
+    authorization: { type: simple }
+    listeners:
+      - name: tls
+        port: 9093
+        type: internal
+        tls: true
+        authentication: { type: scram-sha-512 }
+        networkPolicyPeers:
+          - podSelector:
+              matchLabels: { app.kubernetes.io/component: worker }
+    config:
+      auto.create.topics.enable: false
+      default.replication.factor: 3
+      min.insync.replicas: 2
+      offsets.topic.replication.factor: 3
+      transaction.state.log.replication.factor: 3
+      transaction.state.log.min.isr: 2
+    template:
+      pod:
+        affinity:
+          podAntiAffinity:
+            requiredDuringSchedulingIgnoredDuringExecution:
+              - topologyKey: kubernetes.io/hostname
+                labelSelector:
+                  matchLabels: { strimzi.io/cluster: platform-kafka, strimzi.io/name: platform-kafka-kafka }
+  entityOperator:
+    topicOperator: {}
+    userOperator: {}
+---
+apiVersion: kafka.strimzi.io/v1
+kind: KafkaUser
+metadata:
+  name: platform-worker
+  labels: { strimzi.io/cluster: platform-kafka }
+spec:
+  authentication: { type: scram-sha-512 }
+  authorization:
+    type: simple
+    acls:
+      - resource: { type: topic, name: platform.events.v1, patternType: literal }
+        operations: [Describe, Read, Write]
+      - resource: { type: topic, name: platform.events.dlq.v1, patternType: literal }
+        operations: [Describe, Write]
+      - resource: { type: group, name: platform-worker-v1, patternType: literal }
+        operations: [Read]
+{{- range $topic := list "platform.events.v1" "platform.events.dlq.v1" }}
+---
+apiVersion: kafka.strimzi.io/v1
+kind: KafkaTopic
+metadata:
+  name: {{ $topic }}
+  labels: { strimzi.io/cluster: platform-kafka }
+spec:
+  partitions: 6
+  replicas: 3
+  config:
+    min.insync.replicas: 2
+    retention.ms: 604800000
+{{- end }}

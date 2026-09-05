@@ -1,0 +1,72 @@
+name: Verify async jobs and events
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - 'apps/backend/**'
+      - 'libs/contracts/**'
+      - 'tools/database/**'
+      - 'compose.async.yaml'
+      - 'package.json'
+      - 'pnpm-lock.yaml'
+      - 'pnpm-workspace.yaml'
+      - '.github/workflows/async-check.yml'
+permissions:
+  contents: read
+concurrency:
+  group: async-check-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      NX_DAEMON: 'false'
+      NX_ISOLATE_PLUGINS: 'false'
+      ASYNC_TEST_DISPOSABLE: 'true'
+      OTEL_SDK_DISABLED: 'true'
+      LOG_LEVEL: silent
+      PGHOST: localhost
+      PGPORT: '5432'
+      PGUSER: platform
+      PGDATABASE: platform
+      POSTGRES_PASSWORD: ephemeral-ci-owner
+      PGPASSWORD: ephemeral-ci-owner
+      POSTGRES_RUNTIME_PASSWORD: ephemeral-ci-runtime
+      QUEUE_REDIS_HOST: localhost
+      QUEUE_REDIS_PORT: '6390'
+      QUEUE_REDIS_PASSWORD: ephemeral-ci-queue
+      CACHE_REDIS_HOST: localhost
+      CACHE_REDIS_PORT: '6391'
+      CACHE_REDIS_PASSWORD: ephemeral-ci-cache
+      KAFKA_BROKERS: localhost:9092
+    services:
+      postgres:
+        image: postgres:17.11-alpine
+        env:
+          POSTGRES_USER: platform
+          POSTGRES_DB: platform
+          POSTGRES_PASSWORD: ephemeral-ci-owner
+        ports: [5432:5432]
+        options: --health-cmd "pg_isready -U platform -d platform" --health-interval 5s --health-timeout 3s --health-retries 10
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v6
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm db:setup
+      - run: pnpm db:migrate
+      - run: docker compose -f compose.async.yaml -p platform-async-verification up -d --wait --quiet-pull
+      - run: pnpm kafka:setup
+      - run: pnpm exec nx run backend:test-async
+      - name: Inspect failed async services
+        if: failure()
+        run: docker compose -f compose.async.yaml -p platform-async-verification logs --tail=50
+      - name: Remove disposable async services
+        if: always()
+        run: docker compose -f compose.async.yaml -p platform-async-verification down -v

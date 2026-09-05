@@ -1,0 +1,41 @@
+{
+  "$schema": "https://json-schema.org/draft-07/schema#",
+  "type": "object",
+  "properties": {
+    "keycloak": {
+      "type": "object",
+      "properties": {
+        "name": {
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9-]{0,40}[a-z0-9]$"
+        },
+        "instances": {
+          "type": "integer",
+          "minimum": 2
+        },
+        "hostname": {
+          "type": "string",
+          "pattern": "^https://[^/]+$"
+        }
+      }
+    },
+    "database": {
+      "type": "object",
+      "properties": {
+        "instances": {
+          "type": "integer",
+          "minimum": 3
+        }
+      }
+    },
+    "realm": {
+      "type": "object",
+      "properties": {
+        "appOrigin": {
+          "type": "string",
+          "pattern": "^https://[a-zA-Z0-9.-]+(:[0-9]+)?$"
+        }
+      }
+    }
+  }
+}

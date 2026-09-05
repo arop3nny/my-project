@@ -1,0 +1,7 @@
+apiVersion: v2
+name: data
+description: Application-owned PostgreSQL cluster, separate from Keycloak data
+type: application
+version: 0.1.0
+appVersion: "17.11"
+kubeVersion: ">=1.32.0-0"

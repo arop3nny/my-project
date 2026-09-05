@@ -1,0 +1,30 @@
+apiVersion: v1
+kind: ServiceAccount
+metadata: { name: messaging-deployer }
+automountServiceAccountToken: false
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata: { name: messaging-deployer }
+rules:
+  - apiGroups: [""]
+    resources: [secrets, services, configmaps]
+    verbs: [get, list, watch, create, update, patch, delete]
+  - apiGroups: [apps]
+    resources: [statefulsets]
+    verbs: [get, list, watch, create, update, patch, delete]
+  - apiGroups: [""]
+    resources: [pods, persistentvolumeclaims]
+    verbs: [get, list, watch]
+  - apiGroups: [networking.k8s.io]
+    resources: [networkpolicies]
+    verbs: [get, list, watch, create, update, patch, delete]
+  - apiGroups: [kafka.strimzi.io]
+    resources: [kafkas, kafkanodepools, kafkatopics, kafkausers]
+    verbs: [get, list, watch, create, update, patch]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata: { name: messaging-deployer }
+roleRef: { apiGroup: rbac.authorization.k8s.io, kind: Role, name: messaging-deployer }
+subjects: [{ kind: ServiceAccount, name: messaging-deployer }]

@@ -1,0 +1,105 @@
+{{- range $name := list "queue" "cache" }}
+{{- $config := index $.Values $name }}
+{{- $service := printf "platform-%s" $name }}
+{{- $secret := default $service $config.existingSecret }}
+{{- if not $config.existingSecret }}
+{{- $existing := lookup "v1" "Secret" $.Release.Namespace $secret }}
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: {{ $secret }}
+  annotations: { helm.sh/resource-policy: keep }
+type: Opaque
+data:
+  {{- if $existing }}
+  password: {{ index $existing.data "password" }}
+  {{- else }}
+  password: {{ randAlphaNum 48 | b64enc }}
+  {{- end }}
+{{- end }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ $service }}
+spec:
+  selector: { app.kubernetes.io/component: {{ $service }} }
+  ports: [{ name: redis, port: 6379, targetPort: redis }]
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: {{ $service }}
+spec:
+  serviceName: {{ $service }}
+  replicas: 1
+  selector:
+    matchLabels: { app.kubernetes.io/component: {{ $service }} }
+  template:
+    metadata:
+      labels: { app.kubernetes.io/component: {{ $service }} }
+    spec:
+      automountServiceAccountToken: false
+      terminationGracePeriodSeconds: 60
+      securityContext: { runAsNonRoot: true, runAsUser: 999, runAsGroup: 999, fsGroup: 999, seccompProfile: { type: RuntimeDefault } }
+      containers:
+        - name: redis
+          image: {{ $.Values.redisImage }}
+          command: [sh, -ec]
+          args:
+            - |
+              umask 077
+              printf 'bind 0.0.0.0\nprotected-mode yes\nrequirepass %s\ndir /data\nmaxmemory {{ $config.maxmemory }}\n' "$REDISCLI_AUTH" > /tmp/redis.conf
+              {{- if eq $name "queue" }}
+              printf 'appendonly yes\nappendfsync always\nmaxmemory-policy noeviction\n' >> /tmp/redis.conf
+              {{- else }}
+              printf 'save ""\nappendonly no\nmaxmemory-policy allkeys-lru\n' >> /tmp/redis.conf
+              {{- end }}
+              exec redis-server /tmp/redis.conf
+          env:
+            - name: REDISCLI_AUTH
+              valueFrom:
+                secretKeyRef: { name: {{ $secret }}, key: password }
+          ports: [{ name: redis, containerPort: 6379 }]
+          securityContext: { allowPrivilegeEscalation: false, readOnlyRootFilesystem: true, capabilities: { drop: [ALL] } }
+          startupProbe: { exec: { command: [sh, -ec, "redis-cli ping | grep -q PONG"] }, periodSeconds: 5, failureThreshold: 60 }
+          readinessProbe: { exec: { command: [sh, -ec, "redis-cli ping | grep -q PONG"] }, periodSeconds: 5 }
+          livenessProbe: { exec: { command: [sh, -ec, "redis-cli ping | grep -q PONG"] }, periodSeconds: 10, failureThreshold: 6 }
+          resources:
+            {{- toYaml $config.resources | nindent 12 }}
+          volumeMounts: [{ name: data, mountPath: /data }, { name: tmp, mountPath: /tmp }]
+      volumes:
+        - name: tmp
+          emptyDir: { sizeLimit: 8Mi }
+        {{- if eq $name "cache" }}
+        - name: data
+          emptyDir: { sizeLimit: 32Mi }
+        {{- end }}
+  {{- if eq $name "queue" }}
+  persistentVolumeClaimRetentionPolicy: { whenDeleted: Retain, whenScaled: Retain }
+  volumeClaimTemplates:
+    - metadata: { name: data }
+      spec:
+        accessModes: [ReadWriteOnce]
+        {{- with $.Values.storageClass }}
+        storageClassName: {{ . | quote }}
+        {{- end }}
+        resources:
+          requests: { storage: {{ $config.storageSize }} }
+  {{- end }}
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: {{ $service }}
+spec:
+  podSelector:
+    matchLabels: { app.kubernetes.io/component: {{ $service }} }
+  policyTypes: [Ingress]
+  ingress:
+    - from:
+        - podSelector:
+            matchLabels: { app.kubernetes.io/component: {{ ternary "worker" "backend" (eq $name "queue") }} }
+      ports: [{ port: 6379, protocol: TCP }]
+{{- end }}

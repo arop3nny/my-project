@@ -1,0 +1,40 @@
+name: Deploy identity cluster
+
+on:
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: Identity environment to deploy (operators must already be installed)
+        required: true
+        type: choice
+        options: [staging, production]
+      bootstrap_realm:
+        description: Import the platform realm if it does not exist (creation only)
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+concurrency:
+  group: identity-${{ inputs.environment }}
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    environment: identity-${{ inputs.environment }}
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+      - uses: azure/setup-helm@v4.3.1
+        with:
+          version: v3.19.0
+      - name: Deploy identity resources and await operator readiness
+        env:
+          KUBE_CONFIG_B64: ${{ secrets.KUBE_CONFIG_B64 }}
+          DEPLOY_ENVIRONMENT: ${{ inputs.environment }}
+          BOOTSTRAP_REALM: ${{ inputs.bootstrap_realm }}
+        run: bash tools/helm/identity.sh

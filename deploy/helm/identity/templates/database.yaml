@@ -1,0 +1,33 @@
+apiVersion: postgresql.cnpg.io/v1
+kind: Cluster
+metadata:
+  name: {{ .Values.keycloak.name }}-db
+  annotations:
+    helm.sh/resource-policy: keep
+spec:
+  instances: {{ .Values.database.instances }}
+  imageName: {{ .Values.database.image | quote }}
+  enableSuperuserAccess: false
+  bootstrap:
+    initdb:
+      database: keycloak
+      owner: keycloak
+  storage:
+    size: {{ .Values.database.storageSize }}
+    {{- with .Values.database.storageClass }}
+    storageClass: {{ . | quote }}
+    {{- end }}
+  affinity:
+    enablePodAntiAffinity: true
+    podAntiAffinityType: required
+    topologyKey: kubernetes.io/hostname
+  resources:
+    {{- toYaml .Values.database.resources | nindent 4 }}
+  {{- with .Values.database.plugins }}
+  plugins:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+  {{- with .Values.database.backup }}
+  backup:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}

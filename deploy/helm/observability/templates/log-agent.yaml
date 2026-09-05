@@ -1,0 +1,54 @@
+{{- if .Values.logAgent.enabled }}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: log-agent-config
+data:
+  config.yaml: |
+    {{- include "observability.log-agent-config" . | nindent 4 }}
+---
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  name: platform-log-agent
+spec:
+  selector:
+    matchLabels: { app.kubernetes.io/name: platform-observability, app.kubernetes.io/component: log-agent }
+  template:
+    metadata:
+      labels: { app.kubernetes.io/name: platform-observability, app.kubernetes.io/component: log-agent }
+      annotations:
+        checksum/config: {{ include "observability.log-agent-config" . | sha256sum }}
+    spec:
+      automountServiceAccountToken: false
+      # Node log files and persistent offsets require root; no privileged mode or API token.
+      securityContext: { runAsUser: 0, seccompProfile: { type: RuntimeDefault } }
+      containers:
+        - name: logs
+          image: {{ .Values.collector.image | quote }}
+          args: [--config=/etc/otel/config.yaml]
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities: { drop: [ALL] }
+          resources:
+            requests: { cpu: 50m, memory: 64Mi }
+            limits: { cpu: 500m, memory: 256Mi }
+          ports:
+            - { name: health, containerPort: 13133 }
+          readinessProbe:
+            httpGet: { path: /, port: health }
+          livenessProbe:
+            httpGet: { path: /, port: health }
+          volumeMounts:
+            - { name: config, mountPath: /etc/otel, readOnly: true }
+            - { name: logs, mountPath: /var/log/pods, readOnly: true }
+            - { name: offsets, mountPath: /var/lib/otel }
+      volumes:
+        - name: config
+          configMap: { name: log-agent-config }
+        - name: logs
+          hostPath: { path: /var/log/pods, type: Directory }
+        - name: offsets
+          hostPath: { path: /var/lib/otel-platform-{{ .Values.environment }}, type: DirectoryOrCreate }
+{{- end }}

@@ -1,0 +1,18 @@
+{
+  "name": "tooling",
+  "projectType": "library",
+  "targets": {
+    "test": {
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "node --test tools/ci/*.test.mjs"
+      }
+    },
+    "lint": {
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "eslint tools/ci tools/helm/*.mjs tools/database tools/observability"
+      }
+    }
+  }
+}

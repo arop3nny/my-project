@@ -1,0 +1,21 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: observability-config
+data:
+  {{- range $path, $_ := .Files.Glob "files/*.yaml" }}
+  {{ base $path }}: |
+    {{- $.Files.Get $path | nindent 4 }}
+  {{- end }}
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: grafana-provisioning
+data:
+  datasources.yaml: |
+    {{- .Files.Get "files/grafana/provisioning/datasources/platform.yaml" | nindent 4 }}
+  dashboards.yaml: |
+    {{- .Files.Get "files/grafana/provisioning/dashboards/platform.yaml" | nindent 4 }}
+  platform.json: |
+    {{- .Files.Get "files/grafana/dashboards/platform.json" | nindent 4 }}

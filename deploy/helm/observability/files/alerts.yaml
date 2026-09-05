@@ -1,0 +1,31 @@
+groups:
+  - name: platform
+    rules:
+      - alert: BackendErrorRate
+        expr: sum(rate(http_server_requests_total{http_response_status_code=~"5.."}[5m])) / clamp_min(sum(rate(http_server_requests_total[5m])), 0.001) > 0.05
+        for: 5m
+        labels: { severity: warning }
+        annotations: { summary: 'Backend 5xx responses exceed 5%' }
+      - alert: BackendLatency
+        expr: histogram_quantile(0.95, sum by (le) (rate(http_server_request_duration_seconds_bucket[5m]))) > 1
+        for: 10m
+        labels: { severity: warning }
+        annotations: { summary: 'Backend p95 latency exceeds one second' }
+      - alert: ObservabilityTargetDown
+        expr: up == 0
+        for: 5m
+        labels: { severity: warning }
+        annotations: { summary: 'An observability scrape target is unavailable' }
+      - alert: OutboxDeliveryDelayed
+        expr: max(platform_outbox_oldest_age_seconds) > 300
+        for: 5m
+        labels: { severity: warning }
+        annotations: { summary: 'Async delivery has been pending for over five minutes' }
+      - alert: BackgroundJobFailures
+        expr: sum(increase(platform_jobs_processed_total{result="failed"}[10m])) > 0
+        labels: { severity: warning }
+        annotations: { summary: 'Background jobs exhausted their retries' }
+      - alert: KafkaDeadLetters
+        expr: sum(increase(platform_events_received_total{result="dead_letter"}[10m])) > 0
+        labels: { severity: warning }
+        annotations: { summary: 'Kafka consumer rejected an event into the dead-letter topic' }

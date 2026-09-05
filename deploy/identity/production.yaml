@@ -1,0 +1,9 @@
+keycloak:
+  hostname: https://auth.example.com
+realm:
+  appOrigin: https://app.example.com
+database:
+  storageSize: 50Gi
+gateway:
+  name: platform-edge
+  namespace: edge-production
