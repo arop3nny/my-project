@@ -22,7 +22,7 @@
     "typeorm": "1.1.1",
     "express": "5.2.1",
     "helmet": "^8.1.0",
-    "jose": "6.2.11",
+    "jose": "6.2.12",
     "pg": "8.23.0"
   },
   "devDependencies": {
