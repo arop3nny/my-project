@@ -26,6 +26,6 @@
     "pg": "8.23.0"
   },
   "devDependencies": {
-    "@opentelemetry/sdk-trace": "2.11.0"
+    "@opentelemetry/sdk-trace": "3.0.0"
   }
 }
